@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "environmentcma"
+version = "0.1.0"
+description = "Standalone environmental data helpers for movingpandas workflows"
+requires-python = ">=3.9"
+authors = [
+    { name = "Omar Chatila" },
+    { name = "Mart Hagedoorn" },
+    { name = "Kevin Buchin" }
+]
+dependencies = [
+    "geopandas",
+    "numpy",
+    "pandas",
+    "planetary_computer",
+    "pyproj",
+    "pystac_client",
+    "rasterio",
+    "requests",
+    "rioxarray",
+]
+
+[tool.setuptools]
+packages = [
+    "environmentcma",
+    "environmentcma.resources",
+    "environmentcma.resources.marine_cover",
+]
+package-dir = { "environmentcma" = "." }
+include-package-data = true
+
+[tool.setuptools.package-data]
+environmentcma = ["resources/marine_cover/*"]
