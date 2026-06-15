@@ -7,7 +7,7 @@ from .crs import reproject_to_utm
 
 
 def marine_cover_path(filename: str = "ne_10m_land.shp") -> Path:
-    return Path(resources.files("random_walk_environment.resources.marine_cover") / filename)
+    return Path(resources.files("environmentcma.resources.marine_cover") / filename)
 
 
 def fetch_ocean_cover_tif(
