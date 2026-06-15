@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 
 
@@ -123,7 +125,8 @@ def grid_to_geo_walk(walk_segment, utm_bbox, width, height, inv_transformer):
     return result
 
 
-def utm_to_grid(nx, ny, xmin, ymin, xmax, ymax, utm_x, utm_y):
+def utm_to_grid(nx: int, ny:int, utm_bbox:Tuple[int, int, int, int], utm_x:int, utm_y:int):
+    xmin, ymin, xmax, ymax = utm_bbox
     x = np.round((utm_x - xmin) / (xmax - xmin) * (nx - 1)).astype(int)
     y = np.round((ymax - utm_y) / (ymax - ymin) * (ny - 1)).astype(int)
     return x, y
