@@ -1,7 +1,10 @@
 from typing import Tuple
 
 import numpy as np
+from pyproj import CRS
 
+from . import padded_bbox
+import movingpandas as mpd
 
 def _transformer_cls():
     from pyproj import Transformer
@@ -123,6 +126,18 @@ def grid_to_geo_walk(walk_segment, utm_bbox, width, height, inv_transformer):
         result.append((lon, lat))
 
     return result
+
+def bbox_utm(traj):
+    utm_traj = traj_utm(traj)
+    min_x, min_y, max_x, max_y = utm_traj.df.total_bounds
+    return padded_bbox(min_x, min_y, max_x, max_y, padding=0.1), utm_traj.crs.to_epsg()
+
+def traj_utm(traj):
+    lon, lat = traj.df.geometry.iloc[0].x, traj.df.geometry.iloc[0].y
+    zone = int((lon + 180) // 6) + 1
+    epsg = 32600 + zone if lat >= 0 else 32700 + zone
+    utm_crs = CRS.from_epsg(epsg)
+    return mpd.Trajectory(traj.df.to_crs(utm_crs), traj.id)
 
 
 def utm_to_grid(nx: int, ny:int, utm_bbox:Tuple[int, int, int, int], utm_x:int, utm_y:int):

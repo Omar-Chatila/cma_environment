@@ -1,14 +1,8 @@
-"""Environmental data helpers for random-walk workflows.
-
-This package intentionally has no dependency on ``random_walk_package`` or its
-compiled extension. Public helpers are loaded lazily so importing the package
-does not pull in heavy geospatial dependencies until a specific helper needs
-them.
-"""
-
+"""Environmental data helpers for random-walk workflows."""
 from importlib import import_module
 
 _EXPORTS = {
+    "bbox_utm": "crs",
     "bbox_to_discrete_space": "bounds",
     "build_currents_dataframe": "currents",
     "clamp_lonlat_bbox": "bounds",
@@ -23,6 +17,12 @@ _EXPORTS = {
     "grid_shape_from_bbox": "crs",
     "grid_to_geo": "crs",
     "grid_to_geo_walk": "crs",
+    "traj_utm": "crs",
+    "annotate_trajectory_collection_with_landcover": "landcover",
+    "create_landcover_data_txt": "terrain_annotator",
+    "annotate_trajectory_collection_with_terrain": "landcover",
+    "fetch_landcover_for_trajectory_collection": "landcover",
+    "annotate_tcol_terrain": "terrain_annotator",
     "landcover_classes": "landcover",
     "landcover_to_discrete_txt": "landcover",
     "lonlat_bbox_to_utm": "crs",
@@ -31,6 +31,9 @@ _EXPORTS = {
     "padded_bbox": "bounds",
     "padded_utm_bbox": "crs",
     "reproject_to_utm": "crs",
+    "sample_raster_at_points": "landcover",
+    "padded_trajectory_collection_bbox": "landcover",
+    "trajectory_collection_bbox": "landcover",
     "utm_bbox_to_lonlat": "crs",
     "utm_to_grid": "crs",
     "utm_to_lonlat": "crs",

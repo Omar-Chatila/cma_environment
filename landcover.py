@@ -1,4 +1,6 @@
 import os
+from copy import deepcopy
+from typing import Iterable, Optional
 
 from .crs import lonlat_bbox_to_utm, reproject_to_utm, utm_bbox_to_lonlat
 
@@ -15,6 +17,251 @@ landcover_classes = {
     95: "Mangroves",
     100: "Moss and lichen",
 }
+
+
+def _coerce_sample_value(value, nodata):
+    import numpy as np
+    import pandas as pd
+
+    if np.ma.is_masked(value):
+        return pd.NA
+
+    scalar = value.item() if hasattr(value, "item") else value
+    if nodata is not None and scalar == nodata:
+        return pd.NA
+    return scalar
+
+
+def sample_raster_at_points(
+    geometries: Iterable,
+    raster_path,
+    *,
+    source_crs=None,
+    band: int = 1,
+):
+    """
+    Sample a raster band at point geometries.
+
+    Parameters
+    ----------
+    geometries
+        Iterable of point geometries.
+    raster_path
+        Path to a GeoTIFF or other raster readable by rasterio.
+    source_crs
+        CRS of the input geometries. Required when it cannot be inferred by the
+        caller and differs from the raster CRS.
+    band
+        1-based raster band index to sample.
+    """
+    import pandas as pd
+    import rasterio
+    from pyproj import CRS, Transformer
+
+    points = list(geometries)
+    with rasterio.open(raster_path) as src:
+        if src.crs is None:
+            raise ValueError("Raster must have a CRS to annotate trajectories")
+        if source_crs is None:
+            raise ValueError("source_crs is required to sample raster values")
+
+        source = CRS.from_user_input(source_crs)
+        target = CRS.from_user_input(src.crs)
+
+        xs = [point.x for point in points]
+        ys = [point.y for point in points]
+        if source != target:
+            transformer = Transformer.from_crs(source, target, always_xy=True)
+            xs, ys = transformer.transform(xs, ys)
+
+        values = [
+            _coerce_sample_value(sample[0], src.nodata)
+            for sample in src.sample(zip(xs, ys), indexes=band, masked=True)
+        ]
+
+    return pd.Series(values)
+
+
+def _utm_crs_for_bounds(bounds, source_crs):
+    from pyproj import CRS, Transformer
+
+    source = CRS.from_user_input(source_crs)
+    min_x, min_y, max_x, max_y = bounds
+    center_x = 0.5 * (min_x + max_x)
+    center_y = 0.5 * (min_y + max_y)
+
+    if source.to_epsg() == 4326:
+        center_lon, center_lat = center_x, center_y
+    else:
+        transformer = Transformer.from_crs(source, "EPSG:4326", always_xy=True)
+        center_lon, center_lat = transformer.transform(center_x, center_y)
+
+    zone = int((center_lon + 180) // 6) + 1
+    epsg = 32600 + zone if center_lat >= 0 else 32700 + zone
+    return CRS.from_epsg(epsg)
+
+
+def _add_utm_columns(df, *, x_column, y_column, crs_column, source_crs):
+    from pyproj import CRS, Transformer
+
+    source = CRS.from_user_input(source_crs)
+    target = _utm_crs_for_bounds(df.total_bounds, source)
+    transformer = Transformer.from_crs(source, target, always_xy=True)
+    xs, ys = transformer.transform(df.geometry.x.to_numpy(), df.geometry.y.to_numpy())
+
+    result = df.copy()
+    result[x_column] = xs
+    result[y_column] = ys
+    result[crs_column] = target.to_string()
+    return result
+
+
+def trajectory_collection_bbox(traj_collection, target_crs: str = "EPSG:4326"):
+    """Return the bounding box of all trajectories in ``target_crs``."""
+    import geopandas as gpd
+    import pandas as pd
+
+    frames = []
+    for trajectory in traj_collection.trajectories:
+        df = trajectory.df
+        if df.crs is None:
+            raise ValueError("Trajectory data frame must have a CRS")
+        frames.append(df.to_crs(target_crs))
+
+    if not frames:
+        raise ValueError("Trajectory collection contains no trajectories")
+
+    combined = gpd.GeoDataFrame(pd.concat(frames), crs=target_crs)
+    min_x, min_y, max_x, max_y = combined.total_bounds
+    return float(min_x), float(min_y), float(max_x), float(max_y)
+
+
+def padded_trajectory_collection_bbox(
+    traj_collection,
+    *,
+    padding: float = 0.0,
+    target_crs: str = "EPSG:4326",
+):
+    """Return a trajectory collection bbox padded by a fraction of its size."""
+    min_x, min_y, max_x, max_y = trajectory_collection_bbox(traj_collection, target_crs)
+    width = max_x - min_x
+    height = max_y - min_y
+    pad_x = width * padding
+    pad_y = height * padding
+    return min_x - pad_x, min_y - pad_y, max_x + pad_x, max_y + pad_y
+
+
+def fetch_landcover_for_trajectory_collection(
+        is_marine:bool,
+    traj_collection,
+    *,
+    output_filename="landcover_aoi.tif",
+    padding: float = 0.0,
+):
+    """
+    Fetch ESA WorldCover data for the bounding box of a trajectory collection.
+    """
+    bbox = padded_trajectory_collection_bbox(traj_collection, padding=padding)
+    return fetch_landcover_data(bbox, output_filename=output_filename)
+
+
+def annotate_trajectory_collection_with_terrain(
+    traj_collection,
+    raster_path,
+    *,
+    terrain_column: str = "terrain",
+    terrain_name_column: Optional[str] = "terrain_name",
+    terrain_classes: Optional[dict] = None,
+    band: int = 1,
+    add_utm: bool = False,
+    utm_x_column: str = "utm_x",
+    utm_y_column: str = "utm_y",
+    utm_crs_column: str = "utm_crs",
+    inplace: bool = False,
+):
+    """
+    Annotate every trajectory row with terrain sampled from a raster.
+
+    The returned trajectory collection keeps the same trajectories and original
+    columns as the input, with terrain columns appended. Set ``add_utm=True`` to
+    also append UTM coordinates and the CRS used for those coordinates.
+    """
+    import pandas as pd
+
+    collection = traj_collection if inplace else deepcopy(traj_collection)
+    class_lookup = landcover_classes if terrain_classes is None else terrain_classes
+
+    for trajectory in collection.trajectories:
+        df = trajectory.df.copy()
+        source_crs = df.crs
+        if source_crs is None:
+            raise ValueError("Trajectory data frame must have a CRS")
+
+        terrain = sample_raster_at_points(
+            df.geometry,
+            raster_path,
+            source_crs=source_crs,
+            band=band,
+        )
+        terrain.index = df.index
+        df[terrain_column] = terrain
+
+        if terrain_name_column is not None:
+            df[terrain_name_column] = terrain.map(
+                lambda value: pd.NA if pd.isna(value) else class_lookup.get(value, str(value))
+            )
+
+        if add_utm:
+            df = _add_utm_columns(
+                df,
+                x_column=utm_x_column,
+                y_column=utm_y_column,
+                crs_column=utm_crs_column,
+                source_crs=source_crs,
+            )
+
+        trajectory.df = df
+
+    return collection
+
+
+def annotate_trajectory_collection_with_landcover(
+    is_marine:bool,
+    traj_collection,
+    *,
+    raster_path=None,
+    output_filename="landcover_aoi.tif",
+    padding: float = 0.0,
+    add_utm: bool = False,
+    inplace: bool = False,
+    **annotation_kwargs,
+):
+    """
+    Fetch landcover for a trajectory collection bbox and append landcover values.
+
+    If ``raster_path`` is provided, that TIFF is sampled directly. Otherwise the
+    trajectory collection bbox is computed and ``fetch_landcover_data`` is used
+    to create ``output_filename`` before annotation.
+    """
+    if raster_path is None:
+        raster_path = fetch_landcover_for_trajectory_collection(
+            is_marine,
+            traj_collection,
+            output_filename=output_filename,
+            padding=padding,
+        )
+        if raster_path is None:
+            raise RuntimeError("Could not fetch landcover data for trajectory collection")
+
+    return annotate_trajectory_collection_with_terrain(
+        traj_collection,
+        raster_path,
+        terrain_column=annotation_kwargs.pop("terrain_column", "landcover"),
+        terrain_name_column=annotation_kwargs.pop("terrain_name_column", "landcover_name"),
+        add_utm=add_utm,
+        inplace=inplace,
+        **annotation_kwargs,
+    )
 
 
 def fetch_landcover_data(bbox, output_filename="landcover_aoi.tif"):

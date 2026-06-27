@@ -48,8 +48,14 @@ def fetch_ocean_cover_tif(
     land = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
     print(f"Loaded {len(land)} land polygons")
 
-    width = max(1, int(np.ceil((max_lon - min_lon) / resolution_deg)))
-    height = max(1, int(np.ceil((max_lat - min_lat) / resolution_deg)))
+    MIN_RASTER_CELLS = 2  # clip_box requires >1 pixel per axis, this is the floor
+
+    lon_span = max_lon - min_lon
+    lat_span = max_lat - min_lat
+    resolution_deg = min(resolution_deg, lon_span / MIN_RASTER_CELLS, lat_span / MIN_RASTER_CELLS)
+
+    width = max(1, int(np.ceil(lon_span / resolution_deg)))
+    height = max(1, int(np.ceil(lat_span / resolution_deg)))
     transform = rasterio.transform.from_bounds(
         min_lon,
         min_lat,

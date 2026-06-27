@@ -14,12 +14,14 @@ authors = [
 ]
 dependencies = [
     "geopandas",
+    "movingpandas",
     "numpy",
     "pandas",
     "planetary_computer",
     "pyproj",
     "pystac_client",
     "rasterio",
+    "crs",
     "requests",
     "rioxarray",
 ]
