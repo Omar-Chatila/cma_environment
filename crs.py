@@ -127,10 +127,10 @@ def grid_to_geo_walk(walk_segment, utm_bbox, width, height, inv_transformer):
 
     return result
 
-def bbox_utm(traj):
+def bbox_utm(traj, padding=0.1):
     utm_traj = traj_utm(traj)
     min_x, min_y, max_x, max_y = utm_traj.df.total_bounds
-    return padded_bbox(min_x, min_y, max_x, max_y, padding=0.1), utm_traj.crs.to_epsg()
+    return padded_bbox(min_x, min_y, max_x, max_y, padding=padding), utm_traj.crs.to_epsg()
 
 def traj_utm(traj):
     lon, lat = traj.df.geometry.iloc[0].x, traj.df.geometry.iloc[0].y
