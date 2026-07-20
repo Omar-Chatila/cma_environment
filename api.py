@@ -28,11 +28,11 @@ def _coerce_range_type(value) -> RangeType:
 
 
 def annotate_study_pickle(
-    study_pickle: str | Path,
+    trajectories: mpd.TrajectoryCollection,
+    output_directory: str | Path,
     *,
     range_type: RangeType | str = RangeType.LOCAL,
     resolution: int = 1000,
-    output_directory: str | Path | None = None,
     add_utm: bool = True,
 ) -> mpd.TrajectoryCollection:
     """
@@ -47,23 +47,12 @@ def annotate_study_pickle(
     Pickle files can execute code while loading. The
     annotated trajectory collection is returned and is not pickled again.
     """
-    study_path = Path(study_pickle)
-    if not study_path.is_file():
-        raise FileNotFoundError(f"Study pickle does not exist: {study_path}")
-    if not isinstance(resolution, Integral) or isinstance(resolution, bool) or resolution < 1:
-        raise ValueError("resolution must be a positive integer")
-    resolution = int(resolution)
 
-    with study_path.open("rb") as source:
-        trajectories = pickle.load(source)
-    if not hasattr(trajectories, "trajectories"):
-        raise TypeError("Study pickle must contain a MovingPandas TrajectoryCollection")
+    resolution = int(resolution)
 
     selected_range = _coerce_range_type(range_type)
     artifact_directory = (
         Path(output_directory)
-        if output_directory is not None
-        else study_path.parent / f"{study_path.stem}_environment"
     )
     return annotate_trajectory_collection_environment(
         trajectories,
