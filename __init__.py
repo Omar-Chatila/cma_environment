@@ -2,6 +2,8 @@
 from importlib import import_module
 
 _EXPORTS = {
+    "RangeType": "api",
+    "annotate_study_pickle": "api",
     "bbox_utm": "crs",
     "bbox_to_discrete_space": "bounds",
     "build_currents_dataframe": "currents",
@@ -17,13 +19,18 @@ _EXPORTS = {
     "grid_shape_from_bbox": "crs",
     "grid_to_geo": "crs",
     "grid_to_geo_walk": "crs",
+    "geodataframe_center_lonlat": "crs",
     "traj_utm": "crs",
+    "utm_crs_for_geodataframe": "crs",
+    "utm_crs_for_lonlat": "crs",
     "annotate_trajectory_collection_with_landcover": "landcover",
     "create_landcover_data_txt": "terrain_annotator",
+    "annotate_trajectory_collection_environment": "terrain_annotator",
     "annotate_trajectory_collection_with_terrain": "landcover",
     "fetch_landcover_for_trajectory_collection": "landcover",
     "annotate_tcol_terrain": "terrain_annotator",
     "landcover_classes": "landcover",
+    "land_water_classes": "landcover",
     "landcover_to_discrete_txt": "landcover",
     "lonlat_bbox_to_utm": "crs",
     "make_segment_transformer": "crs",
