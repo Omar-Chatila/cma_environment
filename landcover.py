@@ -2,7 +2,12 @@ import os
 from copy import deepcopy
 from typing import Iterable, Optional
 
-from .crs import lonlat_bbox_to_utm, reproject_to_utm, utm_bbox_to_lonlat
+from .crs import (
+    lonlat_bbox_to_utm,
+    reproject_to_utm,
+    utm_bbox_to_lonlat,
+    utm_crs_for_geodataframe,
+)
 
 landcover_classes = {
     10: "Tree cover",
@@ -16,6 +21,11 @@ landcover_classes = {
     90: "Herbaceous wetland",
     95: "Mangroves",
     100: "Moss and lichen",
+}
+
+land_water_classes = {
+    10: "Land",
+    80: "Water",
 }
 
 
@@ -82,30 +92,11 @@ def sample_raster_at_points(
     return pd.Series(values)
 
 
-def _utm_crs_for_bounds(bounds, source_crs):
-    from pyproj import CRS, Transformer
-
-    source = CRS.from_user_input(source_crs)
-    min_x, min_y, max_x, max_y = bounds
-    center_x = 0.5 * (min_x + max_x)
-    center_y = 0.5 * (min_y + max_y)
-
-    if source.to_epsg() == 4326:
-        center_lon, center_lat = center_x, center_y
-    else:
-        transformer = Transformer.from_crs(source, "EPSG:4326", always_xy=True)
-        center_lon, center_lat = transformer.transform(center_x, center_y)
-
-    zone = int((center_lon + 180) // 6) + 1
-    epsg = 32600 + zone if center_lat >= 0 else 32700 + zone
-    return CRS.from_epsg(epsg)
-
-
 def _add_utm_columns(df, *, x_column, y_column, crs_column, source_crs):
     from pyproj import CRS, Transformer
 
     source = CRS.from_user_input(source_crs)
-    target = _utm_crs_for_bounds(df.total_bounds, source)
+    target = utm_crs_for_geodataframe(df)
     transformer = Transformer.from_crs(source, target, always_xy=True)
     xs, ys = transformer.transform(df.geometry.x.to_numpy(), df.geometry.y.to_numpy())
 
@@ -152,7 +143,6 @@ def padded_trajectory_collection_bbox(
 
 
 def fetch_landcover_for_trajectory_collection(
-        is_marine:bool,
     traj_collection,
     *,
     output_filename="landcover_aoi.tif",
@@ -172,6 +162,7 @@ def annotate_trajectory_collection_with_terrain(
     terrain_column: str = "terrain",
     terrain_name_column: Optional[str] = "terrain_name",
     terrain_classes: Optional[dict] = None,
+    terrain_value_map: Optional[dict] = None,
     band: int = 1,
     add_utm: bool = False,
     utm_x_column: str = "utm_x",
@@ -204,6 +195,12 @@ def annotate_trajectory_collection_with_terrain(
             band=band,
         )
         terrain.index = df.index
+        if terrain_value_map is not None:
+            terrain = terrain.map(
+                lambda value: value
+                if pd.isna(value)
+                else terrain_value_map.get(value, value)
+            )
         df[terrain_column] = terrain
 
         if terrain_name_column is not None:
@@ -226,7 +223,6 @@ def annotate_trajectory_collection_with_terrain(
 
 
 def annotate_trajectory_collection_with_landcover(
-    is_marine:bool,
     traj_collection,
     *,
     raster_path=None,
@@ -245,7 +241,6 @@ def annotate_trajectory_collection_with_landcover(
     """
     if raster_path is None:
         raster_path = fetch_landcover_for_trajectory_collection(
-            is_marine,
             traj_collection,
             output_filename=output_filename,
             padding=padding,

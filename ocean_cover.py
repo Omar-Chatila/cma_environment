@@ -45,6 +45,17 @@ def fetch_ocean_cover_tif(
     print(f"\nFetching ocean cover data for BBOX: {bbox}...")
     min_lon, min_lat, max_lon, max_lat = bbox
 
+    minimum_span = max(2 * resolution_deg, 1e-6)
+    if max_lon - min_lon < minimum_span:
+        center_lon = 0.5 * (min_lon + max_lon)
+        min_lon = center_lon - 0.5 * minimum_span
+        max_lon = center_lon + 0.5 * minimum_span
+    if max_lat - min_lat < minimum_span:
+        center_lat = 0.5 * (min_lat + max_lat)
+        min_lat = center_lat - 0.5 * minimum_span
+        max_lat = center_lat + 0.5 * minimum_span
+    bbox = min_lon, min_lat, max_lon, max_lat
+
     land = gpd.read_file(shapefile_path).to_crs("EPSG:4326")
     print(f"Loaded {len(land)} land polygons")
 

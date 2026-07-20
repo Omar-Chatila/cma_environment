@@ -65,7 +65,39 @@ def geodetic_to_utm(lon, lat, epsg_code):
 
 
 def utm_zone_from_lon(lon):
-    return int((lon + 180) // 6) + 1
+    return min(60, max(1, int((lon + 180) // 6) + 1))
+
+
+def utm_crs_for_lonlat(lon, lat):
+    """Return the WGS84 UTM CRS containing a longitude/latitude position."""
+    zone = utm_zone_from_lon(lon)
+    return CRS.from_epsg((32600 if lat >= 0 else 32700) + zone)
+
+
+def geodataframe_center_lonlat(df):
+    """Return a dateline-safe representative centre for a GeoDataFrame."""
+    if df.crs is None:
+        raise ValueError("Trajectory data frame must have a CRS")
+    if df.empty:
+        raise ValueError("Trajectory data frame contains no points")
+
+    lonlat = df.to_crs("EPSG:4326")
+    longitudes = np.sort(np.mod(lonlat.geometry.x.to_numpy(), 360.0))
+    wrapped = np.append(longitudes, longitudes[0] + 360.0)
+    largest_gap_index = int(np.argmax(np.diff(wrapped)))
+    arc_start = wrapped[largest_gap_index + 1]
+    arc_length = 360.0 - (wrapped[largest_gap_index + 1] - wrapped[largest_gap_index])
+    center_lon = float((arc_start + 0.5 * arc_length) % 360.0)
+    if center_lon > 180.0:
+        center_lon -= 360.0
+    min_lat, max_lat = lonlat.geometry.y.min(), lonlat.geometry.y.max()
+    center_lat = float(0.5 * (min_lat + max_lat))
+    return center_lon, center_lat
+
+
+def utm_crs_for_geodataframe(df):
+    """Choose one UTM CRS from the spatial centre of an animal's track."""
+    return utm_crs_for_lonlat(*geodataframe_center_lonlat(df))
 
 
 def make_segment_transformer(min_lon, min_lat, max_lon, max_lat):
@@ -133,10 +165,7 @@ def bbox_utm(traj, padding=0.1):
     return padded_bbox(min_x, min_y, max_x, max_y, padding=padding), utm_traj.crs.to_epsg()
 
 def traj_utm(traj):
-    lon, lat = traj.df.geometry.iloc[0].x, traj.df.geometry.iloc[0].y
-    zone = int((lon + 180) // 6) + 1
-    epsg = 32600 + zone if lat >= 0 else 32700 + zone
-    utm_crs = CRS.from_epsg(epsg)
+    utm_crs = utm_crs_for_geodataframe(traj.df)
     return mpd.Trajectory(traj.df.to_crs(utm_crs), traj.id)
 
 
